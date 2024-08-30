@@ -87,9 +87,9 @@ def igrf_dipole(epoch=None):
 
     Parameters
     ----------
-    epoch : {'2015', '2010'}, optional
-        Epoch of IGRF-12 (2015) and IGRF-11 (2010). Epoch 2015 of IGRF-12 is
-        used by default.
+    epoch : {'2015', '2020', '2010'}, optional
+        Epoch of IGRF-12 (2015), IGRF-13 (2020), and IGRF-11 (2010).
+        Epoch `"2015"` of IGRF-12 is used by default.
 
     Returns
     -------
@@ -106,13 +106,18 @@ def igrf_dipole(epoch=None):
         # IGRF-12 dipole coefficients, epoch 2015: theta = 9.69, phi = 287.37
         dipole = _dipole_to_unit(np.array([-29442.0, -1501.0, 4797.1]))
 
+    elif epoch == '2020':
+        # IGRF-13 dipole coefficients, epoch 2020
+        dipole = _dipole_to_unit(np.array([-29404.8, -1450.9, 4652.5]))
+
     elif epoch == '2010':
         # dipole as used in original chaos software (IGRF-11), epoch 2010
         dipole = _dipole_to_unit(11.32, 289.59)
 
     else:
-        raise ValueError('Only epoch "2010" (IGRF-11) and'
-                         '"2015" (IGRF-12) supported.')
+        raise ValueError('Only epoch "2010" (IGRF-11), '
+                         '"2015" (IGRF-12), and "2020" '
+                         '(IGRF-13) are supported.')
 
     return dipole
 
@@ -1420,12 +1425,8 @@ def transform_points(theta, phi, time=None, *, reference=None, inverse=None,
         raise ValueError('Unknown target reference system. Use one of '
                          '{"gsm", "sm", "mag"}.')
 
-    if inverse:
-        theta_base, phi_base = geo_to_base(
-            theta, phi, base_1, base_2, base_3, inverse=True)
-
-    else:
-        theta_base, phi_base = geo_to_base(theta, phi, base_1, base_2, base_3)
+    theta_base, phi_base = geo_to_base(theta, phi, base_1, base_2, base_3,
+                                       inverse=inverse)
 
     return theta_base, phi_base
 
