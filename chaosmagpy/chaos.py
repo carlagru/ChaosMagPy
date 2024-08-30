@@ -195,7 +195,7 @@ class Base(object):
                           "outside of the model time period from "
                           f"{start} to {end} Modified Julian Date 2000. "
                           f"Doing {message} extrapolation of the "
-                          "coefficient time series.")
+                          "coefficient time series.", stacklevel=2)
 
             if key > 0:
                 for x in [start, end]:  # left and right
@@ -667,8 +667,7 @@ class BaseModel(Base):
         name : str
             User specified name of the model.
         knots : ndarray, shape (N,)
-            B-spline knots. Knots must have endpoint multiplicity equal to
-            ``order``. Zero-pad ``coeffs`` if needed.
+            B-spline knots.
         coeffs : ndarray, shape (M, D)
             Bspline coefficients for the `M` B-splines parameterizing
             `D` dimensions.
@@ -2835,22 +2834,14 @@ def load_CovObs_txtfile(filepath, name=None):
 
     nmax = int(tmp[0])
     order = int(tmp[2])
-    degree = order - 1  # polynomial degree
 
     # convert decimal year to modified Julian date (using 365.25 days/year)
-    breaks = du.dyear_to_mjd(tmp[3:], leap_year=False)
-
-    # add endpoint multiplicity to conform with scipy's BSpline routine
-    knots = mu.augment_breaks(breaks, order)
+    knots = du.dyear_to_mjd(tmp[3:], leap_year=False)
 
     data = np.fromstring(' '.join(lines[2:]), sep=' ')
 
-    # add zeros at endpoints to match manually extended knots
-    coeffs = np.zeros((knots.size - order, nmax * (nmax + 2)))
-
-    # insert actual coefficients, endpoint coefficients are now zero
-    coeffs[degree:-degree, :] = data.reshape(
-        (breaks.size - order, nmax * (nmax + 2)))
+    # reshape spline coefficients
+    coeffs = data.reshape((-1, nmax * (nmax + 2)))
 
     return BaseModel.from_bspline(name, knots, coeffs, order,
                                   source='internal')
@@ -2926,20 +2917,12 @@ def load_gufm1_txtfile(filepath, name=None):
     nmax = int(data[0])
     order = 4  # hard-coded since not really provided in file
     nbreaks = int(data[1]) + order  # data[1] is number of B-spline functions?
-    degree = order - 1  # polynomial degree
 
     # convert decimal year to modified Julian date (using 365.25 days/year)
-    breaks = du.dyear_to_mjd(data[2:(nbreaks + 2)], leap_year=False)
+    knots = du.dyear_to_mjd(data[2:(nbreaks + 2)], leap_year=False)
 
-    # add endpoint multiplicity to "trick" scipy's BSpline routine
-    knots = mu.augment_breaks(breaks, order)
-
-    # add zeros at endpoints to match manually extended knots
-    coeffs = np.zeros((knots.size - order, nmax * (nmax + 2)))
-
-    # insert actual coefficients, endpoint coefficients are now zero
-    coeffs[degree:-degree, :] = data[(nbreaks + 2):].reshape(
-        (breaks.size - order, nmax * (nmax + 2)))
+    # reshape spline coefficients
+    coeffs = data[(nbreaks + 2):].reshape((-1, nmax * (nmax + 2)))
 
     return BaseModel.from_bspline(name, knots, coeffs, order,
                                   source='internal')
@@ -3018,22 +3001,13 @@ def load_CALS7K_txtfile(filepath, name=None):
 
     dim = nmax*(nmax+2)  # number of spherical harmonic coefficients
     order = 4  # cubic splines
-    degree = order - 1  # polynomial degree
     nbreaks = inspl + order  # number of breaks
 
-    breaks = data[7:(7+nbreaks)]
     # convert decimal year to modified Julian date (using 365.25 days/year)
-    breaks = du.dyear_to_mjd(breaks, leap_year=False)
+    knots = du.dyear_to_mjd(data[7:(7+nbreaks)], leap_year=False)
 
-    # add endpoint multiplicity to "trick" scipy's BSpline routine
-    knots = mu.augment_breaks(breaks, order)
-
-    # add zeros at endpoints to match manually extended knots
-    coeffs = np.zeros((knots.size - order, dim))
-
-    # insert actual coefficients, endpoint coefficients are now zero
-    coeffs[degree:-degree, :] = data[(7+nbreaks):].reshape(
-        (breaks.size - order, dim))
+    # reshape spline coefficients
+    coeffs = data[(7+nbreaks):].reshape((-1, dim))
 
     return BaseModel.from_bspline(name, knots, coeffs, order,
                                   source='internal')
