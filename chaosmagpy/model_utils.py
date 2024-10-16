@@ -246,7 +246,7 @@ def pp_from_bspline(coeffs, knots, order):
     """
 
     degree = order - 1
-    breaks = np.unique(knots[degree:-degree])
+    breaks = np.unique(knots[degree:knots.size-degree])
     pieces = breaks.size - 1
     dim = coeffs.shape[-1]
 
