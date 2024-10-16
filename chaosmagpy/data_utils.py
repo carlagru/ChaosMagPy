@@ -314,8 +314,9 @@ def save_shcfile(time, coeffs, order=None, filepath=None, nmin=None, nmax=None,
         Take leap years for decimal year conversion into account
         (defaults to ``True``).
     header : str, optional
-        Optional header at beginning of file. Defaults to an empty string.
-
+        Optional header at beginning of file. Defaults to writing out a header
+        indicating the timestamp and the leap year setting (``header=None``).
+        Use ``header=False`` if no header should be included.
     """
 
     time = np.asarray(time, dtype=float)
@@ -334,8 +335,6 @@ def save_shcfile(time, coeffs, order=None, filepath=None, nmin=None, nmax=None,
 
     filepath = 'model.shc' if filepath is None else filepath
 
-    header = '' if header is None else header
-
     leap_year = True if leap_year is None else bool(leap_year)
 
     if coeffs.ndim == 1:
@@ -352,17 +351,24 @@ def save_shcfile(time, coeffs, order=None, filepath=None, nmin=None, nmax=None,
         for m in range(1, n+1):
             ord = np.append(ord, [m, -m])
 
-    comment = header + textwrap.dedent(f"""\
+    if (header is None) or (header is True):
+        header = textwrap.dedent(f"""\
         # Created on {dt.datetime.now(dt.timezone.utc)} UTC.
         # Leap years are accounted for in decimal years format ({leap_year}).
-        {nmin} {nmax} {time.size} {order} {order-1}
         """)
+    elif header is False:
+        header = ''
+    else:
+        header = str(header).rstrip() + '\n'
+
+    parameter_line = f'{nmin} {nmax} {time.size} {order} {order-1}\n'
 
     with open(filepath, 'w') as f:
-        # write comment line
-        f.write(comment)
+        # write header and parameter line
+        f.write(header)
+        f.write(parameter_line)
 
-        f.write('  ')  # to represent two missing values
+        f.write(f'{"":4s} {"":4s}')  # to represent the two columns for n and m
         for t in time:
             f.write(' {:16.8f}'.format(mjd_to_dyear(t, leap_year=leap_year)))
         f.write('\n')
@@ -370,7 +376,7 @@ def save_shcfile(time, coeffs, order=None, filepath=None, nmin=None, nmax=None,
         # write coefficient table to 8 significants
         for row, (n, m) in enumerate(zip(deg, ord)):
 
-            f.write('{:} {:}'.format(n, m))
+            f.write('{:4d} {:4d}'.format(n, m))
 
             for value in coeffs[:, row]:
                 f.write(' {:16.8f}'.format(value))
