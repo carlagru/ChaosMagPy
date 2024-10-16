@@ -1001,7 +1001,7 @@ class CHAOS(object):
         if breaks_euler is None:
             self.model_euler = None
         else:
-            satellites = tuple([*breaks_euler.keys()])
+            satellites = tuple(breaks_euler.keys())
             self.model_euler = dict()
 
             for k, satellite in enumerate(satellites):
@@ -1026,7 +1026,7 @@ class CHAOS(object):
         if breaks_cal is None:
             self.model_cal = None
         else:
-            satellites = tuple([*breaks_cal.keys()])
+            satellites = tuple(breaks_cal.keys())
             self.model_cal = dict()
 
             for k, satellite in enumerate(satellites):
@@ -2134,7 +2134,7 @@ str, {'internal', 'external'}
         >>> import numpy as np
         >>> model = cp.CHAOS.from_mat('CHAOS-6-x7.mat')
         >>> time = np.array([500., 600.])
-        >>> model.meta['satellites']  # check satellite names
+        >>> list(model.model_euler.keys())  # get list of satellite names
         ('oersted', 'champ', 'sac_c', 'swarm_a', 'swarm_b', 'swarm_c')
 
         >>> model.synth_euler_angles(time, 'champ')
@@ -2289,27 +2289,25 @@ str, {'internal', 'external'}
                       matlab_compatible=True)
 
         if self.model_euler:
-            # write Euler angles to matfile for each satellite
-            satellites = self.meta['satellites']
 
             t_break_Euler = []  # list of Euler angle breaks for satellites
             alpha = []  # list of alpha for each satellite
             beta = []  # list of beta for each satellite
             gamma = []  # list of gamma for each satellite
-            for satellite in satellites:
+            for mod_euler in self.model_euler.values():
 
                 # reduce breaks if start and end are equal
-                breaks = self.model_euler[satellite].breaks
+                breaks = mod_euler.breaks.copy()
                 if breaks[0] == breaks[-1]:
                     breaks = breaks[0]
 
                 t_break_Euler.append(breaks.reshape((-1, 1)).astype(float))
-                alpha.append(self.model_euler[satellite].coeffs[
-                    0, :, 0].reshape((-1, 1)).astype(float))
-                beta.append(self.model_euler[satellite].coeffs[
-                    0, :, 1].reshape((-1, 1)).astype(float))
-                gamma.append(self.model_euler[satellite].coeffs[
-                    0, :, 2].reshape((-1, 1)).astype(float))
+                alpha.append(mod_euler.coeffs[0, :, 0].reshape(
+                    (-1, 1)).astype(float))
+                beta.append(mod_euler.coeffs[0, :, 1].reshape(
+                    (-1, 1)).astype(float))
+                gamma.append(mod_euler.coeffs[0, :, 2].reshape(
+                    (-1, 1)).astype(float))
 
             hdf.write(np.array(t_break_Euler, dtype='object'),
                       path='/model_Euler/t_break_Euler/',
@@ -2327,10 +2325,10 @@ str, {'internal', 'external'}
         if self.model_cal:
             # write calibration parameters to matfile for each satellite
             cal = []
-            for satellite, model in self.model_cal.items():
-                cal.append(model.to_ppdict())
+            for mod_cal in self.model_cal.values():
+                cal.append(mod_cal.to_ppdict())
 
-            hdf.write(np.array(cal, dtype=object),
+            hdf.write(np.array([cal], dtype=object),
                       path='/pp_CAL/',
                       filename=filepath, matlab_compatible=True)
 
@@ -2514,11 +2512,6 @@ def load_CHAOS_matfile(filepath, name=None, satellites=None):
         # get name without extension
         name = os.path.splitext(os.path.basename(filepath))[0]
 
-    # define satellite names
-    if satellites is None:
-        satellites = ['oersted', 'champ', 'sac_c', 'swarm_a', 'swarm_b',
-                      'swarm_c', 'cryosat-2_1', 'cryosat-2_2', 'cryosat-2_3']
-
     mat_contents = du.load_matfile(filepath)
 
     pp = mat_contents['pp']
@@ -2575,6 +2568,35 @@ def load_CHAOS_matfile(filepath, name=None, satellites=None):
         coeffs_delta['q11'] = qs11[:, 0].reshape((1, -1))
         coeffs_delta['s11'] = qs11[:, 1].reshape((1, -1))
 
+    # load additional parameters and resolve satellite names
+    default_satellites = ['oersted', 'champ', 'sac_c', 'swarm_a',
+                          'swarm_b', 'swarm_c', 'cryosat-2_1',
+                          'cryosat-2_2', 'cryosat-2_3']
+
+    try:
+        params = mat_contents['params']
+
+    except KeyError as err:
+        warnings.warn(f'Missing params dictionary of Euler prerotation: {err}')
+
+        dict_params = {
+            'Euler_prerotation': None
+        }
+
+        # define satellite names according to CHAOS-7 series
+        if satellites is None:
+            satellites = default_satellites
+
+    else:
+        dict_params = {
+            'Euler_prerotation': params['Euler_prerotation']
+        }
+
+        if satellites is None:
+            satellites = params.get('satellites', default_satellites)
+
+    satellites = tuple(satellites)
+
     # load euler angles
     try:
         model_euler = mat_contents['model_Euler']
@@ -2625,17 +2647,12 @@ def load_CHAOS_matfile(filepath, name=None, satellites=None):
         breaks_cal = {'cryosat-2_1': model_cal['breaks']}
         coeffs_cal = {'cryosat-2_1': model_cal['coefs'].reshape((1, -1, 9))}
 
-    # load additional parameters
-    try:
-        params = mat_contents['params']
-        dict_params = {'Euler_prerotation': params['Euler_prerotation']}
+    # collect additional parameters and satellite names
+    dict_params['satellites'] = satellites
 
-    except KeyError as err:
-        warnings.warn(f'Missing params dictionary of Euler prerotation: {err}')
-        dict_params = {'Euler_prerotation': None}
-
-    meta = dict(params=dict_params,
-                satellites=tuple(satellites))
+    meta = {
+        'params': dict_params
+    }
 
     model = CHAOS(breaks=breaks,
                   order=order,
