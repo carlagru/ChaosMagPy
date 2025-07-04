@@ -216,7 +216,9 @@ def augment_breaks(breaks, order):
         raise ValueError("Breaks must be a 1-D array.")
 
     degree = order - 1
-    return np.array([breaks[0]]*degree + list(breaks) + [breaks[-1]]*degree)
+    knots = np.pad(breaks, degree, 'edge')
+
+    return knots
 
 
 def pp_from_bspline(coeffs, knots, order):
@@ -229,8 +231,7 @@ def pp_from_bspline(coeffs, knots, order):
         Bspline coefficients for the `M` B-splines parameterizing
         `D` dimensions.
     knots : ndarray, shape (N,)
-        B-spline knots. The knots must have the full endpoint multiplicity.
-        Zero-pad spline coefficients if needed.
+        B-spline knots.
     order : int
         Order of the B-spline.
 
@@ -245,7 +246,7 @@ def pp_from_bspline(coeffs, knots, order):
     """
 
     degree = order - 1
-    breaks = np.unique(knots)
+    breaks = np.unique(knots[degree:knots.size-degree])
     pieces = breaks.size - 1
     dim = coeffs.shape[-1]
 
@@ -257,7 +258,7 @@ def pp_from_bspline(coeffs, knots, order):
         bs = BSpline(knots, coeffs[:, d], degree)
         pp = PPoly.from_spline(bs, extrapolate=False)
 
-        # remove endpoint multiplicities
+        # remove pieces outside breaks
         coeffs_pp[:, :, d] = pp.c[:, degree:(degree+pieces)]
 
     return coeffs_pp, breaks

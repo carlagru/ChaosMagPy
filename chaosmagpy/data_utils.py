@@ -118,8 +118,7 @@ def load_RC_datfile(filepath=None, parse_dates=None):
     ----------
     filepath : str, optional
         Filepath to RC index ``*.dat``. If ``None``, the RC
-        index will be fetched from `spacecenter.dk <http://www.spacecenter.dk/\
-        files/magnetic-models/RC/current/>`_.
+        index will be fetched from :rc_url:`spacecenter.dk <>`.
     parse_dates : bool, optional
         Replace index with datetime object for time-series manipulations.
         Default is ``False``.
@@ -135,20 +134,25 @@ def load_RC_datfile(filepath=None, parse_dates=None):
     if filepath is None:
         from lxml import html
         import requests
+        import urllib
 
-        link = "http://www.spacecenter.dk/files/magnetic-models/RC/current/"
+        link = "http://www.spacecenter.dk/files/magnetic-models/RC/"
 
         page = requests.get(link)
         print(f'Accessing {page.url}.')
 
         tree = html.fromstring(page.content)
-        file = tree.xpath('//tr[5]//td[2]//a/@href')[0]  # get name from list
-        date = tree.xpath('//tr[5]//td[3]/text()')[0]
+        hrefs = tree.xpath('//a/@href')  # find all links
 
-        print(f'Downloading RC-index file "{file}" '
-              f'(last modified on {date.strip()}).')
+        for href in hrefs:
+            if 'RC/current' in href:
+                filepath = href
+                break
 
-        filepath = link + file
+        resp = urllib.request.urlopen(filepath, timeout=30)
+
+        print(f'Downloading RC-index file "{os.path.basename(filepath)}" '
+              f'(last modified on {resp.headers["last-modified"]}).')
 
     column_names = ['time', 'RC', 'RC_e', 'RC_i', 'flag']
     column_types = {'time': 'float64', 'RC': 'float64', 'RC_e': 'float64',
@@ -314,8 +318,9 @@ def save_shcfile(time, coeffs, order=None, filepath=None, nmin=None, nmax=None,
         Take leap years for decimal year conversion into account
         (defaults to ``True``).
     header : str, optional
-        Optional header at beginning of file. Defaults to an empty string.
-
+        Optional header at beginning of file. Defaults to writing out a header
+        indicating the timestamp and the leap year setting (``header=None``).
+        Use ``header=False`` if no header should be included.
     """
 
     time = np.asarray(time, dtype=float)
@@ -334,8 +339,6 @@ def save_shcfile(time, coeffs, order=None, filepath=None, nmin=None, nmax=None,
 
     filepath = 'model.shc' if filepath is None else filepath
 
-    header = '' if header is None else header
-
     leap_year = True if leap_year is None else bool(leap_year)
 
     if coeffs.ndim == 1:
@@ -352,17 +355,24 @@ def save_shcfile(time, coeffs, order=None, filepath=None, nmin=None, nmax=None,
         for m in range(1, n+1):
             ord = np.append(ord, [m, -m])
 
-    comment = header + textwrap.dedent(f"""\
+    if (header is None) or (header is True):
+        header = textwrap.dedent(f"""\
         # Created on {dt.datetime.now(dt.timezone.utc)} UTC.
         # Leap years are accounted for in decimal years format ({leap_year}).
-        {nmin} {nmax} {time.size} {order} {order-1}
         """)
+    elif header is False:
+        header = ''
+    else:
+        header = str(header).rstrip() + '\n'
+
+    parameter_line = f'{nmin} {nmax} {time.size} {order} {order-1}\n'
 
     with open(filepath, 'w') as f:
-        # write comment line
-        f.write(comment)
+        # write header and parameter line
+        f.write(header)
+        f.write(parameter_line)
 
-        f.write('  ')  # to represent two missing values
+        f.write(f'{"":4s} {"":4s}')  # to represent the two columns for n and m
         for t in time:
             f.write(' {:16.8f}'.format(mjd_to_dyear(t, leap_year=leap_year)))
         f.write('\n')
@@ -370,7 +380,7 @@ def save_shcfile(time, coeffs, order=None, filepath=None, nmin=None, nmax=None,
         # write coefficient table to 8 significants
         for row, (n, m) in enumerate(zip(deg, ord)):
 
-            f.write('{:} {:}'.format(n, m))
+            f.write('{:4d} {:4d}'.format(n, m))
 
             for value in coeffs[:, row]:
                 f.write(' {:16.8f}'.format(value))

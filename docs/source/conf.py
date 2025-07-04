@@ -209,10 +209,12 @@ todo_include_todos = True
 # :chaos_url:`click here <>`
 
 extlinks = {
-    'chaos_url': ('http://www.spacecenter.dk/files/magnetic-models/CHAOS-7/%s', None),
+    'chaos_url': ('http://www.spacecenter.dk/files/magnetic-models/CHAOS-8/%s', None),
+    'chaos8_url': ('http://www.spacecenter.dk/files/magnetic-models/CHAOS-8/%s', None),
+    'chaos7_url': ('http://www.spacecenter.dk/files/magnetic-models/CHAOS-7/%s', None),
     'docs_url': ('https://chaosmagpy.readthedocs.io/en/%s', None),
     'zenodo_url': ('https://doi.org/10.5281/zenodo.3352398%s', None),
-    'rc_url': ('http://www.spacecenter.dk/files/magnetic-models/RC/current/%s', None)
+    'rc_url': ('https://www.spacecenter.dk/files/magnetic-models/RC/%s', None)
 }
 
 # -- Options for sphinx gallery ----------------------------------------------

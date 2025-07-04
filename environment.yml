@@ -19,3 +19,4 @@ dependencies:
     - cdflib
     - hdf5storage >= 0.2
     - sphinx-gallery
+    - apexpy

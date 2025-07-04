@@ -61,9 +61,10 @@ def plot_timeseries(time, *args, **kwargs):
 
     Notes
     -----
-    For more customization get access to the figure and axes handles
+    You may need to call matplotlib ``plt.show()`` to actually show the
+    plot. For more customization get access to the figure and axes handles
     through matplotlib by using ``fig = plt.gcf()`` and ``axes = fig.axes``
-    right after the call to this plotting function.
+    right after the call to this plotting method.
 
     """
 
@@ -142,9 +143,10 @@ def plot_maps(theta_grid, phi_grid, *args, **kwargs):
 
     Notes
     -----
-    For more customization get access to the figure and axes handles
+    You may need to call matplotlib ``plt.show()`` to actually show the
+    plot. For more customization get access to the figure and axes handles
     through matplotlib by using ``fig = plt.gcf()`` and ``axes = fig.axes``
-    right after the call to this plotting function.
+    right after the call to this plotting method.
 
     """
 
@@ -171,13 +173,12 @@ def plot_maps(theta_grid, phi_grid, *args, **kwargs):
     limiter = kwargs.pop('limiter')
     projection = kwargs.pop('projection')
     layout = kwargs.pop('layout')
+    vmin = kwargs.pop('vmin', None)
+    vmax = kwargs.pop('vmax', None)
 
     if layout[0]*layout[1] != n:
         raise ValueError('Plot layout is not compatible with the number of '
                          'produced subplots.')
-
-    # load shapefile with the coastline
-    shp = config_utils.basicConfig['file.shp_coastline']
 
     # create axis handle
     fig, axes = plt.subplots(layout[0], layout[1], figsize=figsize,
@@ -187,21 +188,15 @@ def plot_maps(theta_grid, phi_grid, *args, **kwargs):
     # make subplots
     for ax, component, title in zip(axes.flat, args, titles):
 
-        # evaluate colorbar limits depending on vmax/vmin in kwargs
-        kwargs.setdefault('vmax', limiter(component))
-        kwargs.setdefault('vmin', -limiter(component))
+        # evaluate colorbar limits depending on vmax/vmin
+        vmax_tmp = limiter(component) if vmax is None else vmax
+        vmin_tmp = -limiter(component) if vmin is None else vmin
 
-        with shapefile.Reader(shp) as sf:
-
-            for rec in sf.shapeRecords():
-                lon = np.radians([point[0] for point in rec.shape.points[:]])
-                lat = np.radians([point[1] for point in rec.shape.points[:]])
-
-                ax.plot(lon, lat, color='k', linewidth=0.8)
+        plot_coastlines(ax, color='k', linewidth=0.8)
 
         # produce colormesh and evaluate keywords (defaults and input)
         pc = ax.pcolormesh(np.radians(phi_grid), np.radians(90. - theta_grid),
-                           component, **kwargs)
+                           component, vmin=vmin_tmp, vmax=vmax_tmp, **kwargs)
 
         plt.colorbar(pc, ax=ax, extend='both', label=label)
 
@@ -237,9 +232,10 @@ def plot_power_spectrum(spectrum, **kwargs):
 
     Notes
     -----
-    For more customization get access to the figure and axes handles
+    You may need to call matplotlib ``plt.show()`` to actually show the
+    plot. For more customization get access to the figure and axes handles
     through matplotlib by using ``fig = plt.gcf()`` and ``axes = fig.axes``
-    right after the call to this plotting function.
+    right after the call to this plotting method.
 
     """
 
@@ -271,6 +267,31 @@ def plot_power_spectrum(spectrum, **kwargs):
     ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
 
     fig.tight_layout()
+
+
+def plot_coastlines(ax, **kwargs):
+    """
+    Draw coastlines on a map.
+
+    Parameters
+    ----------
+    ax : :class:`matplotlib.axes.Axes`
+        Matplotlib axes instance in which to draw the coastlines.
+    **kwargs : keywords
+        Plotting customization passed to matplotlib :func:`ax.plot`.
+
+    """
+
+    # load shapefile with the coastline
+    shp = config_utils.basicConfig['file.shp_coastline']
+
+    with shapefile.Reader(shp) as sf:
+
+        for rec in sf.shapeRecords():
+            lon = np.radians([point[0] for point in rec.shape.points[:]])
+            lat = np.radians([point[1] for point in rec.shape.points[:]])
+
+            ax.plot(lon, lat, **kwargs)
 
 
 def fmt(x, pos):

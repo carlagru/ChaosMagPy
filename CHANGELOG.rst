@@ -1,6 +1,26 @@
 Changelog
 =========
 
+Version 0.15-dev
+----------------
+| **Date:** July 4, 2025
+| **Release:** v0.15-dev
+
+News
+^^^^
+Starting with CHAOS-8.3, the model of the ionospheric E-layer field
+can be evaluated directly in ChaosMagPy
+(see :meth:`chaosmagpy.chaos.CHAOS.synth_values_ion`) by simply loading the
+MAT-file. However, this requires the installation of the optional package
+`Apexpy <https://apexpy.readthedocs.io/en/latest/installation.html>`_.
+
+Features
+^^^^^^^^
+* Updated built-in RC-index file to RC_1997-2025_June25_v6_allLT.dat (used
+  during the construction of CHAOS-8.3).
+* Added method to evaluate the ionospheric E-layer field
+  :meth:`chaosmagpy.chaos.CHAOS.synth_values_ion`.
+
 Version 0.14
 ------------
 | **Date:** June 21, 2024

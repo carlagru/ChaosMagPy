@@ -43,6 +43,9 @@ MAG : Magnetic coordinate system (centered dipole, orthogonal)
 
     igrf_dipole
     dipole_to_vec
+    dipole_tilt
+    clock_angle
+    coupling_Newell
     synth_rotate_gauss
     rotate_gauss_fft
     rotate_gauss
@@ -62,6 +65,7 @@ MAG : Magnetic coordinate system (centered dipole, orthogonal)
     matrix_geo_to_base
     transform_points
     transform_vectors
+    qdipole
     center_azimuth
     local_time
     q_response
@@ -74,6 +78,15 @@ import os
 from math import factorial
 from . import model_utils
 from . import config_utils
+from . import data_utils
+
+try:
+    import apexpy
+except ImportError:
+    HAS_APX = False
+else:
+    HAS_APX = True
+
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -87,9 +100,9 @@ def igrf_dipole(epoch=None):
 
     Parameters
     ----------
-    epoch : {'2015', '2010'}, optional
-        Epoch of IGRF-12 (2015) and IGRF-11 (2010). Epoch 2015 of IGRF-12 is
-        used by default.
+    epoch : {'2015', '2020', '2010'}, optional
+        Epoch of IGRF-12 (2015), IGRF-13 (2020), and IGRF-11 (2010).
+        Epoch `"2015"` of IGRF-12 is used by default.
 
     Returns
     -------
@@ -106,13 +119,18 @@ def igrf_dipole(epoch=None):
         # IGRF-12 dipole coefficients, epoch 2015: theta = 9.69, phi = 287.37
         dipole = _dipole_to_unit(np.array([-29442.0, -1501.0, 4797.1]))
 
+    elif epoch == '2020':
+        # IGRF-13 dipole coefficients, epoch 2020
+        dipole = _dipole_to_unit(np.array([-29404.8, -1450.9, 4652.5]))
+
     elif epoch == '2010':
         # dipole as used in original chaos software (IGRF-11), epoch 2010
         dipole = _dipole_to_unit(11.32, 289.59)
 
     else:
-        raise ValueError('Only epoch "2010" (IGRF-11) and'
-                         '"2015" (IGRF-12) supported.')
+        raise ValueError('Only epoch "2010" (IGRF-11), '
+                         '"2015" (IGRF-12), and "2020" '
+                         '(IGRF-13) are supported.')
 
     return dipole
 
@@ -200,6 +218,102 @@ def dipole_to_vec(dipole=None):
         vec = _dipole_to_unit(dipole)
 
     return vec
+
+
+def dipole_tilt(time):
+    """
+    Compute the dipole tilt angle in degrees.
+
+    Parameters
+    ----------
+    time : ndarray, shape (...)
+        Time in modified Julian date.
+
+    Returns
+    -------
+    tilt : ndarray, shape (...)
+        Dipole tilt angle in degrees.
+
+    """
+
+    s = sun_position(time)  # theta and phi position
+    s = np.stack(spherical_to_cartesian(1., s[0], s[1]), axis=-1)
+
+    m = igrf_dipole()
+
+    return np.degrees(np.arcsin(np.matmul(s, m)))
+
+
+def clock_angle(By, Bz):
+    """
+    Compute the interplanetary magnetic field clock angle in degrees.
+
+    Parameters
+    ----------
+    By : ndarray, shape (...)
+        Y-component of the IMF in GSM coordinates.
+    Bz : ndarray, shape (...)
+        Z-component of the IMF in GSM coordinates.
+
+    Returns
+    -------
+    ca : ndarray, shape (...)
+        Clock angle in degrees.
+
+    """
+
+    return np.degrees(np.arctan2(By, Bz))
+
+
+def coupling_Newell(By, Bz, Vx):
+    """
+    Compute Newell's coupling function from solar wind parameters.
+
+    Parameters
+    ----------
+    By : ndarray, shape (...)
+        Y-component of the IMF in GSM coordinates (nT).
+    Bz : ndarray, shape (...)
+        Z-component of the IMF in GSM coordinates (nT).
+    Vx : ndarray, shape (...)
+        X-component of the solar wind in GSM/GSE coordinates (km/s).
+
+    Returns
+    -------
+    Eps : ndarray, shape (...)
+        Newell's coupling function.
+    Tau : ndarray, shape (...)
+        Measure that maximizes for northward IMF.
+
+    Notes
+    -----
+    Newell's coupling function is proportional to the rate at which magnetic
+    flux is openend on the dayside of the magnetopause through reconnection.
+
+    The original definition of the coupling function only differs in the
+    factor :math:`10^{-3}` from the definition used here, where this factor is
+    included:
+
+    .. math::
+
+        \\epsilon &= 10^{-3} \\mathit{V_x}^{4/3} B_T^{2/3}
+            \\sin\\left(\\frac{|\\theta_c|}{2}\\right)^{8/3} \\\\
+        \\tau &= 10^{-3} \\mathit{V_x}^{4/3} B_T^{2/3}
+            \\cos\\left(\\frac{|\\theta_c|}{2}\\right)^{8/3}
+
+    where :math:`V_x` is the solar wind speed in km/s, :math:`\\theta_c` is the
+    clock angle and :math:`B_T` the IMF strength in the y-z-plane of the GSM
+    coordinate system in nT.
+
+    """
+
+    B = np.sqrt(By**2 + Bz**2)
+    ca = np.radians(clock_angle(By, Bz))
+
+    epsilon = np.abs(Vx)**(4./3) * B**(2./3) * np.abs(np.sin(ca/2))**(8./3)
+    tau = np.abs(Vx)**(4./3) * B**(2./3) * np.cos(ca/2)**(8./3)
+
+    return epsilon/1e3, tau/1e3
 
 
 def synth_rotate_gauss(time, frequency, spectrum, scaled=None):
@@ -1420,12 +1534,8 @@ def transform_points(theta, phi, time=None, *, reference=None, inverse=None,
         raise ValueError('Unknown target reference system. Use one of '
                          '{"gsm", "sm", "mag"}.')
 
-    if inverse:
-        theta_base, phi_base = geo_to_base(
-            theta, phi, base_1, base_2, base_3, inverse=True)
-
-    else:
-        theta_base, phi_base = geo_to_base(theta, phi, base_1, base_2, base_3)
+    theta_base, phi_base = geo_to_base(theta, phi, base_1, base_2, base_3,
+                                       inverse=inverse)
 
     return theta_base, phi_base
 
@@ -1586,6 +1696,112 @@ def transform_vectors(theta, phi, B_theta, B_phi, time=None, reference=None,
     B_phi_ref = R[..., 2, 1]*B_theta + R[..., 2, 2]*B_phi
 
     return theta_ref, phi_ref, B_theta_ref, B_phi_ref
+
+
+def _qdipole_nonvectorized(year, glat, glon, height, apex):
+    """Helper that calls fortranapex to compute quasi-dipole coordinates."""
+
+    apex.set_epoch(year)
+    qdlat, qdlon = apexpy.fortranapex.apxg2q(
+        glat, (glon + 180) % 360 - 180, height, 0)[:2]
+    f1, f2 = apexpy.fortranapex.apxg2q(
+        glat, (glon + 180) % 360 - 180, height, 1)[2:4]
+
+    return qdlat, qdlon, f1, f2
+
+
+# create numpy vectorized function
+_qdipole = np.vectorize(
+    _qdipole_nonvectorized,
+    signature='(),(),(),()->(),(),(n),(n)',
+    excluded={4, 'apex'}
+)
+
+
+def qdipole(time, radius, theta, phi, datafile=None, fortranlib=None):
+    """
+    Compute quasi-dipole (QD) coordinates, magnetic local time (MLT) and
+    QD basevectors for a given geographic position.
+
+    Parameters
+    ----------
+    time : float or ndarray, shape (...)
+        Time given as MJD2000 (modified Julian date).
+    radius : float or ndarray, shape (...)
+        Array containing the radius in kilometers.
+    theta : float or ndarray, shape (...)
+        Array containing the colatitude in degrees
+        :math:`[0^\\circ,180^\\circ]`.
+    phi : float or ndarray, shape (...)
+        Array containing the longitude in degrees.
+    datafile : str, optional
+        Path to custom coefficient file (defaults to `apexsh.dat` file
+        in :mod:`apexpy`).
+    fortranlib : str, optional
+        Path to Fortran Apex CPython library (defaults to the
+        linked library file in :mod:`apexpy`.
+
+    Returns
+    -------
+    qdlat : ndarray, shape (...)
+        Quasi-dipole latitide in degrees.
+    qdlon : ndarray, shape (...)
+        Quasi-dipole longitude in degrees.
+    mlt : ndarray, shape (...)
+        Magnetic local time in hours.
+    f1 : ndarray, shape (2, ...)
+        East and north components of the first QD basevector.
+    f2 : ndarray, shape (2, ...)
+        East and north components of the second QD basevector.
+
+    References
+    ----------
+    This function was implemented using modified code from the Apexpy package
+    on `GitHub <https://github.com/aburrell/apexpy/tree/main>`_.
+
+    """
+
+    if not HAS_APX:
+        raise ImportError('This feature requires the optional '
+                          'package "apexpy".')
+
+    # get initial epoch
+    date = float(apexpy.fortranapex.igrf.datel)
+
+    if date == 0:
+        date = 2015.  # random date
+
+    apex = apexpy.Apex(date=date, fortranlib=fortranlib, datafile=datafile)
+
+    # coerce numpy float arrays
+    time = np.asarray(time, dtype=float)
+    radius = np.asarray(radius, dtype=float)
+    theta = np.asarray(theta, dtype=float)
+    phi = np.asarray(phi, dtype=float)
+
+    # convert geocentric to geodetic latitude
+    height, beta = geo_to_gg(radius, theta)
+    glat = apexpy.helpers.checklat(90. - beta, name='glat')
+
+    # convert time to decimal years
+    year = data_utils.mjd_to_dyear(time)
+
+    # compute apex coordinates and base vectors
+    qdlat, qdlon, f1, f2 = _qdipole(year, glat, phi,
+                                    height, apex=apex)
+
+    # compute qdlon of the subsolar point
+    ssgcth, ssglon = sun_position(time)
+    _, ssalon, _, _ = _qdipole(year, 90. - ssgcth, ssglon,
+                               height=50*6371, apex=apex)
+
+    # compute magnetic local time
+    mlt = (180. + qdlon - ssalon)/15. % 24.
+
+    # reset epoch to initial
+    apex.set_epoch(date)
+
+    return qdlat, qdlon, mlt, f1.T, f2.T
 
 
 def center_azimuth(phi):
