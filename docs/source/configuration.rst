@@ -57,7 +57,7 @@ otherwise ChaosMagPy uses the builtin RC-index file.
 
 If you use are using an older version of CHAOS-7, and are interested in the
 external field part of that model, it is recommended to use the RC file from
-the archive at the bottom of the :chaos_url:`CHAOS-7 website <>` associated
+the archive at the bottom of the :chaos7_url:`CHAOS-7 website <>` associated
 with the specific version of CHAOS-7 that you are using.
 
 Save and load custom configuration
