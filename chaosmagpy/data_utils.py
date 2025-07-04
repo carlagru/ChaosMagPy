@@ -118,8 +118,7 @@ def load_RC_datfile(filepath=None, parse_dates=None):
     ----------
     filepath : str, optional
         Filepath to RC index ``*.dat``. If ``None``, the RC
-        index will be fetched from `spacecenter.dk <http://www.spacecenter.dk/\
-        files/magnetic-models/RC/current/>`_.
+        index will be fetched from :rc_url:`spacecenter.dk <>`.
     parse_dates : bool, optional
         Replace index with datetime object for time-series manipulations.
         Default is ``False``.
@@ -135,20 +134,25 @@ def load_RC_datfile(filepath=None, parse_dates=None):
     if filepath is None:
         from lxml import html
         import requests
+        import urllib
 
-        link = "http://www.spacecenter.dk/files/magnetic-models/RC/current/"
+        link = "http://www.spacecenter.dk/files/magnetic-models/RC/"
 
         page = requests.get(link)
         print(f'Accessing {page.url}.')
 
         tree = html.fromstring(page.content)
-        file = tree.xpath('//tr[5]//td[2]//a/@href')[0]  # get name from list
-        date = tree.xpath('//tr[5]//td[3]/text()')[0]
+        hrefs = tree.xpath('//a/@href')  # find all links
 
-        print(f'Downloading RC-index file "{file}" '
-              f'(last modified on {date.strip()}).')
+        for href in hrefs:
+            if 'RC/current' in href:
+                filepath = href
+                break
 
-        filepath = link + file
+        resp = urllib.request.urlopen(filepath, timeout=30)
+
+        print(f'Downloading RC-index file "{os.path.basename(filepath)}" '
+              f'(last modified on {resp.headers["last-modified"]}).')
 
     column_names = ['time', 'RC', 'RC_e', 'RC_i', 'flag']
     column_types = {'time': 'float64', 'RC': 'float64', 'RC_e': 'float64',
