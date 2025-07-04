@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "chaosmagpy"
 dynamic = ["version", "readme"]
 dependencies = [
-  "numpy>=2",
+  "numpy>=1.26",
   "scipy",
   "pandas",
   "Cython",
