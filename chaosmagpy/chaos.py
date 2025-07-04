@@ -497,7 +497,8 @@ class BaseModel(Base):
 
         Notes
         -----
-        For more customization get access to the figure and axes handles
+        You may need to call matplotlib ``plt.show()`` to actually show the
+        plot. For more customization get access to the figure and axes handles
         through matplotlib by using ``fig = plt.gcf()`` and ``axes = fig.axes``
         right after the call to this plotting method.
 
@@ -550,7 +551,8 @@ class BaseModel(Base):
 
         Notes
         -----
-        For more customization get access to the figure and axes handles
+        You may need to call matplotlib ``plt.show()`` to actually show the
+        plot. For more customization get access to the figure and axes handles
         through matplotlib by using ``fig = plt.gcf()`` and ``axes = fig.axes``
         right after the call to this plotting method.
 
@@ -624,7 +626,8 @@ class BaseModel(Base):
 
         Notes
         -----
-        For more customization get access to the figure and axes handles
+        You may need to call matplotlib ``plt.show()`` to actually show the
+        plot. For more customization get access to the figure and axes handles
         through matplotlib by using ``fig = plt.gcf()`` and ``axes = fig.axes``
         right after the call to this plotting method.
 
@@ -873,6 +876,10 @@ class CHAOS(object):
         Dictionary containing satellite name as key and arrays of the 9 basic
         calibration parameters (3 offsets, 3 sensitivities, 3
         non-orthogonality angles) (keys are ``'cryosat-2_1'``).
+    coeffs_ion : ndarray, shape (n_base, ``n_ion`` * (``n_ion`` + 2))
+        Coefficients of the ionospheric field in QD/MLT coordinates.
+    refh_ion: float
+        Reference height of the sheet current in the ionospheric E-layer.
     name : str, optional
         User defined name of the model. Defaults to ``'CHAOS'``.
     meta : dict, optional
@@ -906,6 +913,13 @@ class CHAOS(object):
     coeffs_delta : dict with ndarrays, shape (1, :math:`m_q`)
         Coefficients of baseline corrections of static external field in SM
         coordinates. The dictionary keys are ``'q10'``, ``'q11'``, ``'s11'``.
+    coeffs_ion : ndarray, shape (n_base, ``n_ion`` * (``n_ion`` + 2))
+        Coefficients of the ionospheric field in QD/MLT coordinates.
+    n_ion : int, positive
+        Maximum spherical harmonic degree in QD/MLT coordinates of the
+        ionospheric E-layer field.
+    refh_ion: float
+        Reference height of the sheet current in the ionospheric E-layer.
     name : str, optional
         User defined name of the model.
     meta : dict, optional
@@ -939,6 +953,8 @@ class CHAOS(object):
         coeffs_euler=None,
         breaks_cal=None,
         coeffs_cal=None,
+        coeffs_ion=None,
+        refh_ion=None,
         name=None,
         meta=None
     ):
@@ -1039,16 +1055,27 @@ class CHAOS(object):
                 )
                 self.model_cal[satellite] = model
 
+        # ionospheric field (CHAOS version >=8.3)
+        if coeffs_ion is None:
+            self.coeffs_ion = None
+            self.n_ion = None
+            self.refh_ion = None
+        else:
+            self.coeffs_ion = np.asarray(coeffs_ion, dtype=float)
+            self.n_ion = dimension(coeffs_ion)
+            self.refh_ion = float(refh_ion)
+
         self.meta = meta
 
     def __call__(self, time, radius, theta, phi, rc_e=None, rc_i=None,
+                 imf_y=None, imf_z=None, v=None, f107=None,
                  source_list=None, nmax_static=None, verbose=None):
         """
         Calculate the magnetic field of all sources from the CHAOS model.
 
-        All sources means the time-dependent and static internal fields, and
+        All sources means the time-dependent and static internal fields,
         the external magnetospheric (SM/GSM) fields including their
-        induced parts.
+        induced parts, and the ionospheric E-layer field.
 
         Parameters
         ----------
@@ -1066,14 +1093,29 @@ class CHAOS(object):
         rc_i : ndarray, shape (...), optional
             Internal part of the RC-index (defaults to linearly interpolating
             the hourly values given by the built-in RC-index file).
-        source_list : list, ['tdep', 'static', 'gsm', 'sm'] or \
+        imf_y : ndarray, shape (...),
+            Y-component of the IMF in GSM coordinates (nT). This becomes a
+            required input if computing the ionospheric E-layer field, i.e.
+            if ``'ion'`` is in ``source_list``.
+        imf_z : ndarray, shape (...)
+            Z-component of the IMF in GSM coordinates (nT). This is only needed
+            for computing the ionospheric E-layer field, i.e. if ``'ion'`` is
+            in ``source_list``.
+        v : ndarray, shape (...)
+            X-component of the solar wind in GSM/GSE coordinates (km/s). This
+            is only needed for computing the ionospheric E-layer field,
+            i.e. if ``'ion'`` is in ``source_list``.
+        f107 : ndarray, shape(...)
+            Solar radio flux (sfu). This is only needed for computing the
+            ionospheric E-layer field, i.e. if ``'ion'`` is in ``source_list``.
+        source_list : list, ['tdep', 'static', 'gsm', 'sm', 'ion'] or \
 str, {'internal', 'external'}
             Specify sources in any order. Default is all sources. Instead of a
             list, pass ``source_list='internal'`` which is equivalent to
             ``source_list=['tdep', 'static']`` (internal sources) or
             ``source_list='external'`` which is the same as
-            ``source_list=['gsm', 'sm']`` (external sources including induced
-            part).
+            ``source_list=['gsm', 'sm', 'ion']`` (external sources including
+            Earth-induced parts).
         nmax_static : int, optional
             Maximum spherical harmonic degree of the static internal magnetic
             field (defaults to 85).
@@ -1102,17 +1144,31 @@ str, {'internal', 'external'}
         phi = np.asarray(phi, dtype=float)
 
         if source_list is None:
-            source_list = ['tdep', 'static', 'gsm', 'sm']
+            source_list = {'tdep', 'static', 'gsm', 'sm'}
 
-        elif source_list == 'internal':
-            source_list = ['tdep', 'static']
+            # add ion if it is part of the model
+            if self.coeffs_ion is not None:
+                source_list.add('ion')
 
-        elif source_list == 'external':
-            source_list = ['gsm', 'sm']
+        elif isinstance(source_list, str):
+            source_list = {source_list}  # turn into a set
 
-        source_list = np.ravel(np.array(source_list))
+        else:
+            source_list = set(source_list)
+
+        if 'internal' in source_list:
+            source_list.update({'tdep', 'static'})
+
+        if 'external' in source_list:
+             source_list.update({'gsm', 'sm', 'ion'})
 
         verbose = bool(verbose)
+
+        # check that all inputs for ionospheric field have been specified
+        missing = any([imf_y is None, imf_z is None, v is None, f107 is None])
+        if ('ion' in source_list) and missing:
+            raise ValueError('Missing at least one of the ionospheric '
+                             'field inputs: imf_y, imf_z, v, f107')
 
         # get shape of broadcasted result
         try:
@@ -1151,7 +1207,7 @@ str, {'internal', 'external'}
 
         if 'static' in source_list:
 
-            nmax_static = 85 if nmax_static is None else nmax_static
+            nmax_static = 85 if nmax_static is None else int(nmax_static)
 
             if verbose:
                 print(f'Computing static internal (i.e. small-scale crustal) '
@@ -1194,6 +1250,24 @@ str, {'internal', 'external'}
             s = timer()
             B_radius_new, B_theta_new, B_phi_new = self.synth_values_sm(
                 time, radius, theta, phi, rc_e=rc_e, rc_i=rc_i, source='all')
+
+            B_radius += B_radius_new
+            B_theta += B_theta_new
+            B_phi += B_phi_new
+            e = timer()
+
+            if verbose:
+                print('Finished in {:.6} seconds.'.format(e-s))
+
+        if 'ion' in source_list:
+
+            if verbose:
+                print(f'Computing ionospheric E-layer field up '
+                      f'to degree {self.n_ion}.')
+
+            s = timer()
+            B_radius_new, B_theta_new, B_phi_new = self.synth_values_ion(
+                time, radius, theta, phi, imf_y, imf_z, v, f107)
 
             B_radius += B_radius_new
             B_theta += B_theta_new
@@ -1354,7 +1428,8 @@ str, {'internal', 'external'}
 
         Notes
         -----
-        For more customization get access to the figure and axes handles
+        You may need to call matplotlib ``plt.show()`` to actually show the
+        plot. For more customization get access to the figure and axes handles
         through matplotlib by using ``fig = plt.gcf()`` and ``axes = fig.axes``
         right after the call to this plotting method.
 
@@ -1388,7 +1463,8 @@ str, {'internal', 'external'}
 
         Notes
         -----
-        For more customization get access to the figure and axes handles
+        You may need to call matplotlib ``plt.show()`` to actually show the
+        plot. For more customization get access to the figure and axes handles
         through matplotlib by using ``fig = plt.gcf()`` and ``axes = fig.axes``
         right after the call to this plotting method.
 
@@ -1494,7 +1570,8 @@ str, {'internal', 'external'}
 
         Notes
         -----
-        For more customization get access to the figure and axes handles
+        You may need to call matplotlib ``plt.show()`` to actually show the
+        plot. For more customization get access to the figure and axes handles
         through matplotlib by using ``fig = plt.gcf()`` and ``axes = fig.axes``
         right after the call to this plotting method.
 
@@ -1935,7 +2012,7 @@ str, {'internal', 'external'}
             coefficients, but can also be smaller, if specified).
         source : {'all', 'external', 'internal'}, optional
             Choose source to be external (inducing), internal (induced) or
-            both added (default to 'all').
+            both added (defaults to 'all').
         grid : bool, optional
             If ``True``, field components are computed on a regular grid,
             which is created from ``theta`` and ``phi`` as their outer product
@@ -2023,9 +2100,9 @@ str, {'internal', 'external'}
         return B_radius, B_theta, B_phi
 
     def plot_maps_external(self, time, radius, *, nmax=None, reference=None,
-                           source=None):
+                           source=None, rc_e=None, rc_i=None):
         """
-        Plot global map of the external field from the CHAOS model.
+        Plot a global map of the magnetospheric field in the CHAOS model.
 
         Parameters
         ----------
@@ -2042,10 +2119,19 @@ str, {'internal', 'external'}
         source : {'all', 'external', 'internal'}, optional
             Choose source to be external (inducing), internal (induced) or
             the sum of both (default).
+        rc_e : ndarray, shape (...), optional
+            External part of the RC-index (defaults to linearly interpolating
+            the hourly values given by the built-in RC-index file). This is
+            only used in the near-magnetospheric field (SM) part of the model.
+        rc_i : ndarray, shape (...), optional
+            Internal part of the RC-index (defaults to linearly interpolating
+            the hourly values given by the built-in RC-index file). This is
+            only used in the near-magnetospheric field (SM) part of the model.
 
         Notes
         -----
-        For more customization get access to the figure and axes handles
+        You may need to call matplotlib ``plt.show()`` to actually show the
+        plot. For more customization get access to the figure and axes handles
         through matplotlib by using ``fig = plt.gcf()`` and ``axes = fig.axes``
         right after the call to this plotting method.
 
@@ -2060,17 +2146,18 @@ str, {'internal', 'external'}
         phi = np.linspace(-180, 180, num=721)
 
         # compute GSM contribution: external, internal
-        if reference == 'all' or reference == 'gsm':
+        if (reference == 'all') or (reference == 'gsm'):
 
             # compute magnetic field components
             B_radius_gsm, B_theta_gsm, B_phi_gsm = self.synth_values_gsm(
                 time, radius, theta, phi, nmax=nmax, source=source, grid=True)
 
         # compute SM contribution: external, internal
-        if reference == 'all' or reference == 'sm':
+        if (reference == 'all') or (reference == 'sm'):
 
             B_radius_sm, B_theta_sm, B_phi_sm = self.synth_values_sm(
-                time, radius, theta, phi, nmax=nmax, source=source, grid=True)
+                time, radius, theta, phi, rc_e=rc_e, rc_i=rc_i,
+                nmax=nmax, source=source, grid=True)
 
         if reference == 'all':
             B_radius = B_radius_gsm + B_radius_sm
@@ -2159,6 +2246,203 @@ str, {'internal', 'external'}
                           f'The pre-rotation angles are {pre}.')
 
         return coeffs
+
+    def synth_values_ion(self, time, radius, theta, phi, imf_y, imf_z, v,
+                         f107, *, nmax=None, datafile=None, fortranlib=None):
+        """
+        Compute the vector components of the ionospheric E-layer field from the
+        CHAOS model.
+
+        Parameters
+        ----------
+        time : float or ndarray, shape (...)
+            Time given as MJD2000 (modified Julian date).
+        radius : float or ndarray, shape (...)
+            Array containing the radius in kilometers.
+        theta : float or ndarray, shape (...)
+            Array containing the colatitude in degrees
+            :math:`[0^\\circ,180^\\circ]`.
+        phi : float or ndarray, shape (...)
+            Array containing the longitude in degrees.
+        imf_y : ndarray, shape (...)
+            Y-component of the IMF in GSM coordinates (nT).
+        imf_z : ndarray, shape (...)
+            Z-component of the IMF in GSM coordinates (nT).
+        v : ndarray, shape (...)
+            X-component of the solar wind in GSM/GSE coordinates (km/s).
+        f107 : ndarray, shape(...)
+            Solar radio flux (sfu).
+        nmax : int, positive, optional
+            Maximum spherical harmonic degree (defaults is given by the model
+            coefficients).
+        datafile : str, optional
+            Path to custom coefficient file (defaults to `apexsh.dat` file
+            in :mod:`apexpy`).
+        fortranlib : str, optional
+            Path to Fortran Apex CPython library (defaults to the
+            linked library file in :mod:`apexpy`.
+
+        Returns
+        -------
+        B_radius, B_theta, B_phi : ndarray, shape (...)
+            Radial, colatitude and azimuthal field components.
+
+        Notes
+        -----
+        Interplanetary magnetic field and solar wind speed data are available
+        at 1-minute resolution at
+        `OMNIWeb <https://spdf.gsfc.nasa.gov/pub/data/omni/high_res_omni/monthly_1min/>`_.
+        It is recommended to smooth the time series using a 2-hour
+        rolling mean.
+
+        The observed solar radio flux f10.7 can be downloaded at daily
+        resolution from
+        `here <http://lasp.colorado.edu/lisird/data/penticton_radio_flux/>`_
+
+        Examples
+        --------
+        >>> import chaosmagpy as cp
+        >>> import numpy as np
+        >>> model = cp.CHAOS.from_mat('CHAOS-8.3.mat')
+        >>> time = np.array([0., 10.])
+        >>> imf_y, imf_z, v, f107 = (2., -4., 350., 100.)
+        >>> Br, Bt, Bp = model.synth_values_ion(time, 6800., 45., 0., imf_y, imf_z, v, f107)  # at satellite altitude
+        >>> Br
+        array([0.92402341, 0.85912358])
+
+        """
+
+        if self.coeffs_ion is None:
+            raise ValueError("Ionospheric field coefficients are missing.")
+
+        # handle optional argument: nmax
+        if nmax is None:
+            nmax = self.n_ion
+        elif nmax > self.n_ion:
+            warnings.warn(
+                'Supplied nmax = {0} is incompatible with number of model '
+                'coefficients. Using nmax = {1} instead.'.format(
+                    nmax, self.n_ion))
+            nmax = self.n_ion
+
+        # coerce numpy float arrays
+        time = np.asarray(time, dtype=float)
+        radius = np.asarray(radius, dtype=float)
+        theta = np.asarray(theta, dtype=float)
+        phi = np.asarray(phi, dtype=float)
+        imf_y = np.asarray(imf_y, dtype=float)
+        imf_z = np.asarray(imf_z, dtype=float)
+        v = np.asarray(v, dtype=float)
+        f107 = np.asarray(f107, dtype=float)
+
+        # select ionospheric field coefficients
+        dim = nmax*(nmax+2)
+        coeffs_ion = self.coeffs_ion[:, :dim]  # (n_bases, n_coeffs)
+        nbases = coeffs_ion.shape[0]
+
+        # hard-coded parameters for AMPS
+        a = config_utils.basicConfig['params.r_surf']
+        refh = self.refh_ion
+
+        # compute geodetic height
+        height, beta = cu.geo_to_gg(radius, theta)
+
+        # compute QD/MLT coordinates and QD basevectors
+        qdlat, _, mlt, f1, f2 = cu.qdipole(
+            time, radius, theta, phi, datafile=datafile, fortranlib=fortranlib)
+
+        # create external drivers for AMPS collocation
+        tilt = cu.dipole_tilt(time)
+        ca = cu.clock_angle(imf_y, imf_z)
+        eps, tau = cu.coupling_Newell(imf_y, imf_z, v)
+
+        # build collocation matrix
+        b = np.broadcast(time, radius, theta, phi, imf_y, imf_z, v, f107)
+        shape = max(b.shape, (1,))
+        colloc = np.zeros(shape + (nbases,))
+
+        sin_ca = np.sin(np.radians(ca))
+        cos_ca = np.cos(np.radians(ca))
+
+        colloc[..., 0] = 1.
+        colloc[..., 1] = sin_ca
+        colloc[..., 2] = cos_ca
+        colloc[..., 3] = eps
+        colloc[..., 4] = eps*sin_ca
+        colloc[..., 5] = eps*cos_ca
+        colloc[..., 6] = tilt
+        colloc[..., 7] = tilt*sin_ca
+        colloc[..., 8] = tilt*cos_ca
+        colloc[..., 9] = tilt*eps
+        colloc[..., 10] = colloc[..., 9]*sin_ca
+        colloc[..., 11] = colloc[..., 9]*cos_ca
+        colloc[..., 12] = tau  # maximizes for IMF strictly northward
+        colloc[..., 13] = colloc[..., 12]*sin_ca
+        colloc[..., 14] = colloc[..., 12]*cos_ca
+        colloc[..., 15] = tilt*tau
+        colloc[..., 16] = colloc[..., 15]*sin_ca
+        colloc[..., 17] = colloc[..., 15]*cos_ca
+        colloc[..., 18] = f107
+
+        # compute the QD spherical harmonic coefficients using external drivers
+        coeffs = np.einsum('...j,jk->...k', colloc, coeffs_ion)
+
+        # allocate arrays for the magnetic field components
+        B_h = np.zeros(coeffs.shape[:-1])
+        B_qtheta = np.zeros(coeffs.shape[:-1])
+        B_qphi = np.zeros(coeffs.shape[:-1])
+
+        index = (height >= refh)  # find sites above and at sheet current
+
+        if np.any(index):
+
+            B_int = mu.synth_values(
+                coeffs[index],
+                a + height[index],
+                90. - qdlat[index],
+                15*mlt[index],
+                nmax=nmax,
+                source='internal'
+            )
+
+            B_h[index] += B_int[0]
+            B_qtheta[index] += B_int[1]
+            B_qphi[index] += B_int[2]
+
+        if np.any(~index):
+
+            # radial component is continuous: qnm proportional to gnm with a
+            # degree-dependent factor of proportionality
+            n = np.zeros((dim,))
+            for nn in range(1, nmax+1):
+                n[(nn**2-1):((nn+1)**2-1)] = nn
+
+            factor = -(n+1)/n * (a/(a + refh))**(2*n+1)  # current at refh
+
+            B_ext = mu.synth_values(
+                factor*coeffs[~index],
+                a + height[~index],
+                90. - qdlat[~index],
+                15*mlt[~index],
+                nmax=nmax,
+                source='external'
+            )
+
+            B_h[~index] += B_ext[0]
+            B_qtheta[~index] += B_ext[1]
+            B_qphi[~index] += B_ext[2]
+
+        # qd basevector scaling
+        scaling = np.cross(f1, f2, axisa=0, axisb=0)
+
+        # geodetic up-south-east
+        B_u = np.sqrt(scaling)*B_h
+        B_s = f1[0]*B_qtheta + f2[0]*B_qphi
+        B_phi = f1[1]*B_qtheta + f2[1]*B_qphi
+
+        _, _, B_radius, B_theta = cu.gg_to_geo(height, beta, X=-B_s, Z=-B_u)
+
+        return B_radius, B_theta, B_phi
 
     def save_shcfile(self, filepath, *, model=None, leap_year=None):
         """
@@ -2337,6 +2621,19 @@ str, {'internal', 'external'}
             g = np.ravel(self.model_static.coeffs).reshape((-1, 1))
 
             hdf.write(g, path='/g', filename=filepath, matlab_compatible=True)
+
+        if self.coeffs_ion is not None:  # truth value otherwise ambiguous
+            # write ionospheric field coefficients to matfile
+
+            model_ion = dict(
+                coeffs=self.coeffs_ion,
+                nmax=self.n_ion,
+                nbases=self.coeffs_ion.shape[0],
+                refh=self.refh_ion
+            )
+
+            hdf.write(model_ion, path='/model_ion', filename=filepath,
+                      matlab_compatible=True)
 
         if self.meta:
             hdf.write(self.meta['params'], path='/params', filename=filepath,
@@ -2533,12 +2830,12 @@ def load_CHAOS_matfile(filepath, name=None, satellites=None):
         warnings.warn(f'Missing static internal field coefficients: {err}')
         coeffs_static = None
 
-    # load the external field model
+    # load the magnetospheric field model
     try:
         model_ext = mat_contents['model_ext']
 
     except KeyError as err:
-        warnings.warn(f'Missing external field coefficients: {err}')
+        warnings.warn(f'Missing magnetospheric field coefficients: {err}')
         coeffs_delta = None
         breaks_delta = None
         coeffs_gsm = None
@@ -2567,6 +2864,19 @@ def load_CHAOS_matfile(filepath, name=None, satellites=None):
         qs11 = model_ext['qs11']
         coeffs_delta['q11'] = qs11[:, 0].reshape((1, -1))
         coeffs_delta['s11'] = qs11[:, 1].reshape((1, -1))
+
+    # load ionospheric field coefficients
+    try:
+        model_ion = mat_contents['model_ion']
+
+    except KeyError as err:
+        warnings.warn(f'Missing ionospheric field coefficients: {err}')
+        coeffs_ion = None
+        refh_ion = None
+
+    else:
+        coeffs_ion = model_ion['coeffs']  # (nbases, n_coeffs)
+        refh_ion = model_ion['refh']  # reference height of the sheet current
 
     # load additional parameters and resolve satellite names
     default_satellites = ['oersted', 'champ', 'sac_c', 'swarm_a',
@@ -2666,6 +2976,8 @@ def load_CHAOS_matfile(filepath, name=None, satellites=None):
                   coeffs_euler=coeffs_euler,
                   breaks_cal=breaks_cal,
                   coeffs_cal=coeffs_cal,
+                  coeffs_ion=coeffs_ion,
+                  refh_ion=refh_ion,
                   name=name,
                   meta=meta)
 
