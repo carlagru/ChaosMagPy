@@ -10,9 +10,10 @@ import glob
 import matplotlib.pyplot as plt
 from chaosmagpy import load_CHAOS_matfile
 from chaosmagpy.coordinate_utils import transform_points
-from chaosmagpy.data_utils import mjd2000
+from chaosmagpy.data_utils import mjd2000, load_RC_datfile
 
 FILEPATH_CHAOS = glob.glob('data/CHAOS-*.mat')[0]
+FILEPATH_RC = glob.glob('data/RC*.dat')[0]
 
 R_REF = 6371.2
 
@@ -42,6 +43,11 @@ def example1():
     model = load_CHAOS_matfile(FILEPATH_CHAOS)
     print(model)
 
+    # load RC-index and interpolate onto input time
+    rc = load_RC_datfile(FILEPATH_RC)
+    rc_e = np.interp(time, rc['time'], rc['RC_e'])
+    rc_i = np.interp(time, rc['time'], rc['RC_i'])
+
     print('Computing core field.')
     B_core = model.synth_values_tdep(time, radius, theta, phi)
 
@@ -57,7 +63,8 @@ def example1():
     B_gsm = model.synth_values_gsm(time, radius, theta, phi, source='all')
 
     print('Computing field due to external sources, incl. induced field: SM.')
-    B_sm = model.synth_values_sm(time, radius, theta, phi, source='all')
+    B_sm = model.synth_values_sm(time, radius, theta, phi,
+                                 rc_e=rc_e, rc_i=rc_i, source='all')
 
     # complete external field contribution
     B_radius_ext = B_gsm[0] + B_sm[0]
@@ -165,7 +172,7 @@ def example4():
 def example5():
     """
     Plot timeseries of the magnetic field at the ground observatory in MBour
-    MBO (lat: 75.62°, east lon: 343.03°).
+    MBO (lat: 75.62 degree, east lon: 343.03 degree).
 
     """
 
@@ -187,11 +194,15 @@ def example6():
     """
 
     model = load_CHAOS_matfile(FILEPATH_CHAOS)
+    rc = load_RC_datfile(FILEPATH_RC)
 
     radius = R_REF + 450
     time = mjd2000(2015, 9, 1, 12)
+    rc_e = np.interp(time, rc['time'], rc['RC_e'])
+    rc_i = np.interp(time, rc['time'], rc['RC_i'])
 
-    model.plot_maps_external(time, radius, reference='all', source='all')
+    model.plot_maps_external(time, radius, rc_e=rc_e, rc_i=rc_i,
+                             reference='all', source='all')
 
 
 if __name__ == '__main__':
