@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 
-read -e -p "Path to the recent CHAOS mat-file: " chaos
-read -e -p "Version of CHAOS [e.g.: 0706]: " vchaos
+read -e -p "Latest CHAOS version [e.g.: 8.1]: " release
+
+modeldir=../../Projects/CHAOS-main/releases
 
 # extract from __init__.py on line with __version__ the expr between ""
 version=$(grep __version__ chaosmagpy/__init__.py | sed 's/.*"\(.*\)".*/\1/')
-out=chaosmagpy_package_"$version"_"$vchaos".zip
+out=chaosmagpy_package_"$version"_"$release".zip
 
-echo -e "\n------- ChaosMagPy Version $version / CHAOS Version $vchaos -------\n"
-echo "Building package with CHAOS-matfile in '$chaos'."
+echo -e "\n------- ChaosMagPy Version $version / CHAOS Version $release -------\n"
 
 while true; do
     read -p "Do you wish to continue building v$version (y/n)?: " yn
@@ -36,7 +36,12 @@ mkdir $tempdir/data $tempdir/html
 # copy files to tmp directory
 cp dist/chaosmagpy-$version.tar.gz $tempdir/.
 cp chaos_examples.py $tempdir/.
-cp $chaos $tempdir/data/.
+
+echo "Copying CHAOS MAT-file: '$modeldir/CHAOS-$release/CHAOS-$release.mat'"
+cp $modeldir/CHAOS-$release/CHAOS-$release.mat $tempdir/data/.
+
+echo "Copying RC-index file: '$modeldir/CHAOS-$release/RC*.dat'"
+cp $modeldir/CHAOS-$release/RC*.dat $tempdir/data/.
 
 # run example
 cd $tempdir/
