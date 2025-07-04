@@ -15,7 +15,8 @@ ChaosMagPy relies on the following (some are optional):
 * matplotlib>=3.6 (optional, used for plotting)
 * lxml (optional, used for downloading latest RC-index file)
 
-Specific installation steps using the conda/pip package managers are as follows:
+Specific installation steps for all dependencies, including optional packages,
+using the conda/pip package managers are as follows:
 
 1. Install packages with conda:
 
@@ -25,13 +26,9 @@ Specific installation steps using the conda/pip package managers are as follows:
 
    >>> pip install "hdf5storage>=0.2" apexpy
 
-3. Finally install ChaosMagPy with pip:
+3. Finally, install ChaosMagPy with pip:
 
    >>> pip install chaosmagpy
-
-   or, if all optional packages are desired,
-
-   >>> pip install 'chaosmagpy[full]'
 
    Alternatively, if you have downloaded the distribution archives from the
    Python Package Index (PyPI) at https://pypi.org/project/chaosmagpy/#files,
