@@ -1,10 +1,10 @@
 Changelog
 =========
 
-Version 0.15-dev
-----------------
+Version 0.15
+------------
 | **Date:** July 4, 2025
-| **Release:** v0.15-dev
+| **Release:** v0.15
 
 News
 ^^^^
