@@ -22,7 +22,8 @@ maintainers = [
   {name = "Clemens Kloss", email = "ancklo@space.dtu.dk"}
 ]
 description = "Evaluates the CHAOS geomagnetic field model and other models of Earth's magnetic field."
-license = {file = "LICENSE"}
+license = "MIT"
+license-files = ["LICENSE"]
 keywords = [
   "CHAOS",
   "geomagnetic field",
@@ -34,7 +35,6 @@ keywords = [
 ]
 classifiers = [
   "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: MIT License",
   "Operating System :: Unix",
   "Operating System :: POSIX",
   "Operating System :: Microsoft :: Windows",
@@ -51,7 +51,7 @@ classifiers = [
 full = [
   "matplotlib>=3.6",
   "lxml>=4.3.4",
-  "apexpy"
+  "apexpy>=2.1.0; python_version <= '3.12'",
 ]
 
 [project.urls]

@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 
 read -e -p "Latest CHAOS version [e.g.: 8.1]: " release
+read -e -p "Output file suffix [e.g.: 0801]: " release_suffix
 
 modeldir=../../Projects/CHAOS-main/releases
 
 # extract from __init__.py on line with __version__ the expr between ""
 version=$(grep __version__ chaosmagpy/__init__.py | sed 's/.*"\(.*\)".*/\1/')
-out=chaosmagpy_package_"$version"_"$release".zip
+out=chaosmagpy_package_"$version"_"$release_suffix".zip
 
 echo -e "\n------- ChaosMagPy Version $version / CHAOS Version $release -------\n"
 
@@ -141,7 +142,7 @@ cat << EOF
 Check that the correct RC-index file has been included.
 Check that the CHAOS version in basicConfig was built with the included RC-index file.
 Check that example_script.py output agrees with MATLAB example output.
-Check the copyright notice and update the year if needed.
+Check the copyright notices in every source field and update the year if needed.
 Check changelog dates and entries.
 Check urls in the config file of the documentation.
 Check the readme file in the root of the repository.
