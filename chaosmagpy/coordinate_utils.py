@@ -291,8 +291,7 @@ def coupling_Newell(By, Bz, Vx):
     flux is openend on the dayside of the magnetopause through reconnection.
 
     The original definition of the coupling function only differs in the
-    factor :math:`10^{-3}` from the definition used here, where this factor is
-    included:
+    factor :math:`10^{-3}`, which is included in the definition used here:
 
     .. math::
 

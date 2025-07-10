@@ -2742,7 +2742,7 @@ def load_CHAOS_matfile(filepath, name=None, satellites=None):
     satellites : list of strings, optional
         List of satellite names whose Euler angles are stored in the MAT-file.
         This is needed for correct referencing as this information is not
-        given in the standard CHAOS MAT-file format (defaults to
+        given in the previous CHAOS-7 MAT-file format (defaults to
         ``['oersted', 'champ', 'sac_c', 'swarm_a', 'swarm_b', 'swarm_c',
         'cryosat-2_1', 'cryosat-2_2', 'cryosat-2_3']``.)
 
