@@ -24,8 +24,7 @@ maintainers = [
   {name = "Clemens Kloss", email = "ancklo@space.dtu.dk"}
 ]
 description = "Evaluates the CHAOS geomagnetic field model and other models of Earth's magnetic field."
-license = "MIT"
-license-files = ["LICENSE"]
+license = {file = "LICENSE"}
 keywords = [
   "CHAOS",
   "geomagnetic field",
