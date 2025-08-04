@@ -1127,6 +1127,23 @@ str, {'internal', 'external'}
         B_radius, B_theta, B_phi : ndarray, shape (...)
             Radial, colatitude and azimuthal field components.
 
+        Warnings
+        --------
+        The ionospheric field part of the model is awaiting a fix regarding the
+        input external parameters imf_x, imf_y and v.
+
+        Notes
+        -----
+        Interplanetary magnetic field and solar wind speed data are available
+        at 1-minute resolution at
+        `OMNIWeb <https://spdf.gsfc.nasa.gov/pub/data/omni/high_res_omni/monthly_1min/>`_.
+        It is recommended to smooth the time series using a backward-looking
+        20-minute rolling mean.
+
+        The observed solar radio flux f10.7 can be downloaded at daily
+        resolution from
+        `here <http://lasp.colorado.edu/lisird/data/penticton_radio_flux/>`_
+
         Examples
         --------
         >>> import chaosmagpy as cp
@@ -2287,13 +2304,18 @@ str, {'internal', 'external'}
         B_radius, B_theta, B_phi : ndarray, shape (...)
             Radial, colatitude and azimuthal field components.
 
+        Warnings
+        --------
+        The ionospheric field part of the model is awaiting a fix regarding the
+        input external parameters imf_x, imf_y and v.
+
         Notes
         -----
         Interplanetary magnetic field and solar wind speed data are available
         at 1-minute resolution at
         `OMNIWeb <https://spdf.gsfc.nasa.gov/pub/data/omni/high_res_omni/monthly_1min/>`_.
-        It is recommended to smooth the time series using a 2-hour
-        rolling mean.
+        It is recommended to smooth the time series using a backward-looking
+        20-minute rolling mean.
 
         The observed solar radio flux f10.7 can be downloaded at daily
         resolution from
